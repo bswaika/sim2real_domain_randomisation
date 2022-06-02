@@ -354,7 +354,7 @@ def init_hyper_params():
 
     # VAE parameters
     parser.add_argument("--vae_model", type=str,
-                        default="vae/models/seg_bce_cnn_zdim64_beta1_kl_tolerance0.0_data/",
+                        default="seg_bce_cnn_zdim64_beta1_kl_tolerance0.0_data/",
                         help="Trained VAE model to load")
     parser.add_argument("--vae_model_type", type=str, default='cnn', help="VAE model type (\"cnn\" or \"mlp\")")
     parser.add_argument("--vae_z_dim", type=int, default=64, help="Size of VAE bottleneck")
