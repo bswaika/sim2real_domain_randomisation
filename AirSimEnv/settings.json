@@ -1,0 +1,14 @@
+{
+    "SettingsVersion": 1.7,
+    "SimMode": "Car",
+    "RecordUIVisible": false,
+    "CameraDefaults": {
+        "CaptureSettings": [
+		{
+	  		"ImageType": 0,
+			"Width": 1920,
+			"Height": 1080
+		}
+        ]
+    }
+}

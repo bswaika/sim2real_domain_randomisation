@@ -1,0 +1,4 @@
+*/__pycache__/
+.vscode/
+eval_videos/
+models/*/
