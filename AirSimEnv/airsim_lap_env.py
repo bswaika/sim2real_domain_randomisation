@@ -216,7 +216,7 @@ class AirSimLapEnv(gym.Env):
         self.step_count += 1
 
         pygame.event.pump()
-        if pygame.key.get_pressed()[K_5]:
+        if pygame.key.get_pressed()[K_ESCAPE]:
             # print('here')
             self.terminal_state = True
         

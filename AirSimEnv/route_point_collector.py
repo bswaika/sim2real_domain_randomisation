@@ -100,7 +100,7 @@ class AirSimLapEnv():
         self.previous_position = self.client.simGetVehiclePose().position
 
         pygame.event.pump()
-        if pygame.key.get_pressed()[K_z]:
+        if pygame.key.get_pressed()[K_ESCAPE]:
             self.terminal_state = True
         if pygame.key.get_pressed()[K_SPACE]:
             try:
