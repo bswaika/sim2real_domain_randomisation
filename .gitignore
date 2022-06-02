@@ -2,3 +2,4 @@
 .vscode/
 eval_videos/
 models/*/
+__pycache__/
