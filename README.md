@@ -12,7 +12,7 @@ and other agents. However, swapping the agent would mean having to rewrite the t
 
 ## Stack
 1. [Carla Simulator 0.9.5](https://github.com/carla-simulator/carla/releases/tag/0.9.5)
-2. [AirSim 1.7 CityEnviron(Windows)](https://github.com/microsoft/AirSim/releases/tag/v1.7.0-windows)
+2. [AirSim 1.7 CityEnviron](https://github.com/microsoft/AirSim/releases/tag/v1.7.0-windows)
 3. [Tensorflow 1.15](https://github.com/tensorflow/docs/tree/master/site/en/r1)
 
 <!--3. [AirSim 1.7 AirSimNH(Linux)](https://github.com/microsoft/AirSim/releases/tag/v1.7.0-linux)-->
