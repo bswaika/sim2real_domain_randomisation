@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import argparse
 
 import numpy as np
 import tensorflow as tf
@@ -16,66 +17,66 @@ from utils import compute_gae, VideoRecorder
 
 from PIL import Image, ImageEnhance
 
-hyper_params = {
-    'model': {
-        'ppo': {
-            'learning_rate': 1e-4,
-            'lr_decay': 1.0,
-            'epsilon': 0.2,
-            'initial_std': 1.0,
-            'value_scale': 1.0,
-            'entropy_scale': 0.01,
-            'model_name': f'dr-model-{int(time.time())}'
-        },
-        'vae': {
-            'model_name': 'seg_bce_cnn_zdim64_beta1_kl_tolerance0.0_data',
-            'model_type': 'cnn',
-            'z_dim': 64
-        },
-        'horizon': 128, #256,
-        'epochs': 2, #20,
-        'episodes': 5, #5000,
-        'batch_size': 32,
-        'gae_lambda': 0.95,
-        'discount_factor': 0.99,
-        'eval_interval': 2, #1000   
-    },
-    'env': {
-        'common': {
-            'host': '172.26.0.1',
-            'fps': 18,
-            'action_smoothing': 0.3,
-            'reward_fn': 'reward_speed_centering_angle_multiply',
-            'obs_res': (160, 80)
-        },
-        'source': {
-            'synchronous': True,
-            'start_carla': False
-        },
-        'target': {
-            'route_file': './AirSimEnv/routes/dr-test-02.txt'
-        }
-    },
-    'dr': {
-        'brightness': {
-            'mu': 6.0,
-            'sigma': 2.0
-        },
-        'contrast': {
-            'mu': 6.0,
-            'sigma': 2.0
-        },
-        'hue': {
-            'mu': 6.0,
-            'sigma': 2.0
-        },
-        'epochs': 5,
-        'learning_rate': 1e-2
-    }
-}
+# hyper_params = {
+#     'model': {
+#         'ppo': {
+#             'learning_rate': 1e-4,
+#             'lr_decay': 1.0,
+#             'epsilon': 0.2,
+#             'initial_std': 1.0,
+#             'value_scale': 1.0,
+#             'entropy_scale': 0.01,
+#             'model_name': f'dr-model-{int(time.time())}'
+#         },
+#         'vae': {
+#             'model_name': 'seg_bce_cnn_zdim64_beta1_kl_tolerance0.0_data',
+#             'model_type': 'cnn',
+#             'z_dim': 64
+#         },
+#         'horizon': 128, #256,
+#         'epochs': 2, #20,
+#         'episodes': 5, #5000,
+#         'batch_size': 32,
+#         'gae_lambda': 0.95,
+#         'discount_factor': 0.99,
+#         'eval_interval': 2, #1000   
+#     },
+#     'env': {
+#         'common': {
+#             'host': '172.26.0.1',
+#             'fps': 18,
+#             'action_smoothing': 0.3,
+#             'reward_fn': 'reward_speed_centering_angle_multiply',
+#             'obs_res': (160, 80)
+#         },
+#         'source': {
+#             'synchronous': True,
+#             'start_carla': False
+#         },
+#         'target': {
+#             'route_file': './AirSimEnv/routes/dr-test-02.txt'
+#         }
+#     },
+#     'dr': {
+#         'brightness': {
+#             'mu': 6.0,
+#             'sigma': 2.0
+#         },
+#         'contrast': {
+#             'mu': 6.0,
+#             'sigma': 2.0
+#         },
+#         'hue': {
+#             'mu': 6.0,
+#             'sigma': 2.0
+#         },
+#         'epochs': 5,
+#         'learning_rate': 1e-2
+#     }
+# }
 
 class DRParameters:
-    def __init__(self, hyper_params=hyper_params['dr']):
+    def __init__(self, hyper_params):
         self.hyper_params = hyper_params
         with tf.variable_scope('brightness'):
             self.brightness = tfp.distributions.Normal(
@@ -100,7 +101,7 @@ class DRParameters:
         return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=scope)
 
 class DomainRandomizer:
-    def __init__(self, hyper_params=hyper_params):
+    def __init__(self, hyper_params):
         self.hyper_params = hyper_params
         self.init_vae()
         self.measurements = set(['steer', 'throttle', 'speed'])
@@ -387,8 +388,121 @@ class DomainRandomizer:
         
         print('Done...')
 
+def init_hyper_params():
+    parser = argparse.ArgumentParser(description="Domain Randomization (sim2sim)")
+
+    # DR hyper parameters
+    parser.add_argument("--dr_learning_rate", type=float, default=1e-2, help="DR learning rate")
+    parser.add_argument("--dr_num_epochs", type=int, default=1000, help="DR number of epochs")
+    parser.add_argument("--brightness_mean", type=float, default=6.0, help="Initial Distribution Mean (Brightness)")
+    parser.add_argument("--brightness_std", type=float, default=2.0, help="Initial Distribution Std Dev (Brightness)")
+    parser.add_argument("--contrast_mean", type=float, default=6.0, help="Initial Distribution Mean (Contrast)")
+    parser.add_argument("--contrast_std", type=float, default=2.0, help="Initial Distribution Std Dev (Contrast)")
+    parser.add_argument("--hue_mean", type=float, default=6.0, help="Initial Distribution Mean (Hue)")
+    parser.add_argument("--hue_std", type=float, default=2.0, help="Initial Distribution Std Dev (Hue)")
+    
+    
+    # PPO hyper parameters
+    parser.add_argument("--learning_rate", type=float, default=1e-4, help="Initial learning rate")
+    parser.add_argument("--lr_decay", type=float, default=1.0, help="Per-episode exponential learning rate decay")
+    parser.add_argument("--ppo_epsilon", type=float, default=0.2, help="PPO epsilon")
+    parser.add_argument("--initial_std", type=float, default=1.0, help="Initial value of the std used in the gaussian policy")
+    parser.add_argument("--value_scale", type=float, default=1.0, help="Value loss scale factor")
+    parser.add_argument("--entropy_scale", type=float, default=0.01, help="Entropy loss scale factor")
+
+    # VAE parameters
+    parser.add_argument("--vae_model", type=str,
+                        default="vae/models/seg_bce_cnn_zdim64_beta1_kl_tolerance0.0_data/",
+                        help="Trained VAE model to load")
+    parser.add_argument("--vae_model_type", type=str, default='cnn', help="VAE model type (\"cnn\" or \"mlp\")")
+    parser.add_argument("--vae_z_dim", type=int, default=64, help="Size of VAE bottleneck")
+
+    # General hyper parameters
+    parser.add_argument("--discount_factor", type=float, default=0.99, help="GAE discount factor")
+    parser.add_argument("--gae_lambda", type=float, default=0.95, help="GAE lambda")
+    parser.add_argument("--horizon", type=int, default=128, help="Number of steps to simulate per training step")
+    parser.add_argument("--num_epochs", type=int, default=20, help="Number of PPO training epochs per traning step")
+    parser.add_argument("--batch_size", type=int, default=32, help="Epoch batch size")
+    parser.add_argument("--num_episodes", type=int, default=5000, help="Number of episodes to train for (0 or less trains forever)")
+
+    # Common Environment settings
+    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to connect to")
+    parser.add_argument("--fps", type=int, default=15, help="Set this to the FPS of the environment")
+    parser.add_argument("--action_smoothing", type=float, default=0.3, help="Action smoothing factor")
+    parser.add_argument("--reward_fn", type=str,
+                        default="reward_speed_centering_angle_multiply",
+                        help="Reward function to use. See reward_functions.py for more info.")
+    
+    # Carla Settings
+    parser.add_argument("--synchronous", type=int, default=True, help="Set this to True when running in a synchronous environment")
+
+    # AirSim Settings
+    parser.add_argument("--route_file", type=str, default="./AirSimEnv/routes/dr-test-02.txt", help="Route to use in AirSim")
+
+    parser.add_argument("--model_name", type=str, default=f"dr-model-{int(time.time())}", help="Name of the model to train. Output written to models/model_name")
+
+    params = vars(parser.parse_args())
+
+    return {
+        'model': {
+            'ppo': {
+                'learning_rate': params['learning_rate'],
+                'lr_decay': params['lr_decay'],
+                'epsilon': params['ppo_epsilon'],
+                'initial_std': params['initial_std'],
+                'value_scale': params['value_scale'],
+                'entropy_scale': params['entropy_scale'],
+                'model_name': params['model_name']
+            },
+            'vae': {
+                'model_name': params['vae_model'],
+                'model_type': params['vae_model_type'],
+                'z_dim': params['vae_z_dim']
+            },
+            'horizon': params['horizon'],
+            'epochs': params['num_epochs'],
+            'episodes': params['num_episodes'],
+            'batch_size': params['batch_size'],
+            'gae_lambda': params['gae_lambda'],
+            'discount_factor': params['discount_factor']   
+        },
+        'env': {
+            'common': {
+                'host': params['host'],
+                'fps': params['fps'],
+                'action_smoothing': params['action_smoothing'],
+                'reward_fn': params['reward_fn'],
+                'obs_res': (160, 80)
+            },
+            'source': {
+                'synchronous': params['synchronous'],
+                'start_carla': False
+            },
+            'target': {
+                'route_file': params['route_file']
+            }
+        },
+        'dr': {
+            'brightness': {
+                'mu': params['brightness_mean'],
+                'sigma': params['brightness_std']
+            },
+            'contrast': {
+                'mu': params['contrast_mean'],
+                'sigma': params['contrast_std']
+            },
+            'hue': {
+                'mu': params['hue_mean'],
+                'sigma': params['hue_std']
+            },
+            'epochs': params['dr_num_epochs'],
+            'learning_rate': params['dr_learning_rate']
+        }
+    }
+
 if __name__ == '__main__':
-    dr = DomainRandomizer()
+    hyper_params = init_hyper_params()
+    dr = DomainRandomizer(hyper_params)
     try:
         dr.run()
     except Exception as e:
