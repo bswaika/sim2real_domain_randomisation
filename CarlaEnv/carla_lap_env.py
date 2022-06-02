@@ -251,7 +251,7 @@ class CarlaLapEnv(gym.Env):
         self.laps_completed = 0.0
 
         # DEBUG: Draw path
-        #self._draw_path(life_time=1000.0, skip=10)
+        # self._draw_path(life_time=1000.0, skip=10)
 
         # Return initial observation
         return self.step(None)[0]

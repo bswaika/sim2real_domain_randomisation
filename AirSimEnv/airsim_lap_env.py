@@ -114,17 +114,17 @@ class AirSimLapEnv(gym.Env):
         self.lap_start_pose = self.client.simGetVehiclePose()
         self.adjust_cams()
 
-        spawn_pose = airsim.Pose(airsim.Vector3r(spawn_at[0], spawn_at[1], spawn_at[2]), airsim.to_quaternion(np.nan, np.nan, np.nan))
-        self.client.simSetVehiclePose(spawn_pose, True)
-        self.lap_start_pose = self.client.simGetVehiclePose()
         self.load_route()
         self.generate_route_waypoints()
+
+        spawn_pose = airsim.Pose(self.route[0], airsim.to_quaternion(np.nan, np.nan, np.nan))
+        self.client.simSetVehiclePose(spawn_pose, True)
+        self.lap_start_pose = self.client.simGetVehiclePose()
+        
         if self.trace:
             self.draw_waypoints()
         destination_pose = airsim.Pose(self.route[-1], airsim.to_quaternion(0, 0, 0))
         self.lap_end_pose = destination_pose
-
-        # self.remove_unwanted_objects()
 
         self.terminal_state = False 
         self.closed = False 
@@ -193,7 +193,6 @@ class AirSimLapEnv(gym.Env):
         state = self.client.getCarState()
         has_collided = self.client.simGetCollisionInfo().has_collided
 
-        # Process with State and Position
         step_distance = position.distance_to(self.previous_position)
         self.distance_traveled += step_distance if step_distance > 0.009 else 0
         self.speed_accum += state.speed
@@ -274,7 +273,7 @@ def reward_fn(env: AirSimLapEnv):
     return 0
 
 if __name__ == '__main__':
-    env = AirSimLapEnv(host=sys.argv[1], obs_res=(160, 80), route_file=sys.argv[2], reward_fn=reward_fn)
+    env = AirSimLapEnv(host=sys.argv[1], obs_res=(160, 80), route_file=sys.argv[2], reward_fn=reward_fn, trace=True)
     action = np.zeros(env.action_space.shape[0])
     while True:
         pygame.event.pump()
@@ -289,7 +288,7 @@ if __name__ == '__main__':
         action[1] = 1.0 if keys[K_UP] or keys[K_w] else 0.0
 
         obs, reward, done, info = env.step(action)
-        print(round(reward, 2), round(env.distance_traveled, 2), round(env.center_lane_deviation, 2))
+        # print(round(reward, 2), round(env.distance_traveled, 2), round(env.center_lane_deviation, 2))
         
         if info["closed"]:
             env.close()

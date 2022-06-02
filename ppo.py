@@ -186,7 +186,8 @@ class PPO():
         self.checkpoint_dir = "{}/checkpoints/".format(self.model_dir)
         self.log_dir        = "{}/logs/".format(self.model_dir)
         self.video_dir      = "{}/videos/".format(self.model_dir)
-        self.dirs = [self.checkpoint_dir, self.log_dir, self.video_dir]
+        self.image_dir      = "{}/images/".format(self.model_dir)
+        self.dirs = [self.checkpoint_dir, self.log_dir, self.video_dir, self.image_dir]
         for d in self.dirs: os.makedirs(d, exist_ok=True)
 
     def init_session(self, sess=None, init_logging=True):

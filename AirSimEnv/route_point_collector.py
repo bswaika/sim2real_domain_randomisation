@@ -37,7 +37,7 @@ class AirSimLapEnv():
         try:
             self.client = airsim.CarClient(host, port)
             self.client.confirmConnection()
-            self.reset()
+            self.reset(spawn_at=(np.nan, np.nan, np.nan))
         except Exception as e:
             self.close()
             raise e
@@ -65,11 +65,6 @@ class AirSimLapEnv():
             'steer': 0.0,
             'throttle': 0.0
         }
-
-        vehicles = self.client.simListSceneObjects('Vehicle.*')
-        for vehicle in vehicles:
-            will_remove = self.client.simDestroyObject(vehicle)
-            print(will_remove)
 
         self.previous_position = self.lap_start_pose.position
         time.sleep(2)

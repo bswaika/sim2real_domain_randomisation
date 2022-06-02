@@ -34,7 +34,7 @@ hyper_params = {
         },
         'horizon': 128, #256,
         'epochs': 2, #20,
-        'episodes': 2, #5000,
+        'episodes': 5, #5000,
         'batch_size': 32,
         'gae_lambda': 0.95,
         'discount_factor': 0.99,
@@ -53,7 +53,7 @@ hyper_params = {
             'start_carla': False
         },
         'target': {
-            'route_file': './AirSimEnv/routes/dr-test-01.txt'
+            'route_file': './AirSimEnv/routes/dr-test-02.txt'
         }
     },
     'dr': {
@@ -69,7 +69,7 @@ hyper_params = {
             'mu': 6.0,
             'sigma': 2.0
         },
-        'epochs': 2,
+        'epochs': 5,
         'learning_rate': 1e-2
     }
 }
@@ -187,11 +187,13 @@ class DomainRandomizer:
         frame = frame.astype(np.float32) / 255.0
         return frame
 
-    def make_state(self, state, for_source_env=True, transform_params=(0.0, 0.0, 0.0)):
+    def make_state(self, state, for_source_env=True, transform_params=(0.0, 0.0, 0.0), save_frame_idx=-1):
         frame, measurements = state['frame'], state['measurements']
         if for_source_env:
             frame = self.transform_frame(frame, transform_params)
-        frame = self.normalize_frame(frame)
+            if save_frame_idx > -1:
+                Image.fromarray(frame).save(os.path.join(self.model.image_dir, f'epoch-{save_frame_idx}.png'))
+        frame = self.normalize_frame(frame)            
         encoded_state = self.vae.encode([frame])[0]
         encoded_state = np.append(encoded_state, measurements)
         return encoded_state
@@ -286,7 +288,7 @@ class DomainRandomizer:
         env = self.source_env if in_source_env else self.target_env
         if in_source_env:
             state, terminal, total_reward = env.reset(is_training=False), False, 0
-            state = self.make_state(state, transform_params=transform_params)
+            state = self.make_state(state, transform_params=transform_params, save_frame_idx=idx)
         else:
             state, terminal, total_reward = env.reset(), False, 0
             state = self.make_state(state, for_source_env=False)
@@ -352,10 +354,11 @@ class DomainRandomizer:
     def run(self):
         # self.model.sess.run(tf.variables_initializer(self.optimizer.variables()))
         for idx in range(self.epochs):
+            print(f'DR Epoch {idx}')
             transform_params = self.params.sample(self.model.sess)
             self.train(idx, transform_params)
             source_reward = self.eval(idx, transform_params=transform_params)
-            target_reward = self.eval(idx, in_source_env=False)
+            target_reward = self.eval(idx, in_source_env=False, transform_params=transform_params)
 
             if target_reward > self.best_eval_reward:
                 self.model.save()
