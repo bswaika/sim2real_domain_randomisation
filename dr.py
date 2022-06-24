@@ -47,6 +47,7 @@ class DomainRandomizer:
     def __init__(self, hyper_params):
         self.hyper_params = hyper_params
         self.init_vae()
+        self.init_cnn()
         self.measurements = set(['steer', 'throttle', 'speed'])
         self.encode_state_fn = make_encode_state_fn(self.measurements)
         self.init_source_env()
@@ -66,6 +67,9 @@ class DomainRandomizer:
         self.optimizer.apply_gradients(zip([0.0, 0.0], self.trainable_params['c']))
         self.optimizer.apply_gradients(zip([0.0, 0.0], self.trainable_params['h']))
         self.init_ppo()
+        self.presets = carla_weather_presets[:1]
+        if self.hyper_params['env']['source']['weather']:
+            self.presets = carla_weather_presets
 
     def init_source_env(self):
         self.source_env = CarlaEnv(
@@ -91,14 +95,27 @@ class DomainRandomizer:
         )
 
     def init_vae(self):
-        self.vae = load_vae(
-            os.path.join('./vae/models', self.hyper_params['model']['vae']['model_name']),
-            self.hyper_params['model']['vae']['z_dim'], 
-            self.hyper_params['model']['vae']['model_type']
-        )
+        if self.hyper_params['model']['use_vae']:
+            self.vae = load_vae(
+                os.path.join('./vae/models', self.hyper_params['model']['vae']['model_name']),
+                self.hyper_params['model']['vae']['z_dim'], 
+                self.hyper_params['model']['vae']['model_type']
+            )
+        else:
+            self.vae = None
+        
+    def init_cnn(self):
+        if self.hyper_params['model']['use_vae']:
+            self.cnn = None
+        else:
+            self.cnn = tf.keras.applications.mobilenet_v2.MobileNetV2(
+                input_shape=(*self.hyper_params['env']['common']['obs_res'], 3), 
+                include_top=False, 
+                pooling='avg'
+            )
     
     def init_ppo(self):
-        self.input_shape = np.array([self.vae.z_dim + len(self.measurements)])
+        self.input_shape = np.array([self.vae.z_dim + len(self.measurements)]) if self.vae else np.array([1280 + len(self.measurements)])
         self.model = PPO(
             self.input_shape, self.action_space,
             learning_rate=self.hyper_params['model']['ppo']['learning_rate'],
@@ -137,8 +154,8 @@ class DomainRandomizer:
             frame = self.transform_frame(frame, transform_params)
             if save_frame_idx > -1:
                 Image.fromarray(frame).save(os.path.join(self.model.image_dir, f'epoch-{save_frame_idx}.png'))
-        frame = self.normalize_frame(frame)            
-        encoded_state = self.vae.encode([frame])[0]
+        frame = self.normalize_frame(frame)
+        encoded_state = self.vae.encode([frame])[0] if self.vae else self.cnn.predict(np.reshape(frame, (1, *frame.shape)))[0]
         encoded_state = np.append(encoded_state, measurements)
         return encoded_state
 
@@ -156,7 +173,7 @@ class DomainRandomizer:
         while episodes <= 0 or self.model.get_episode_idx() < episodes:
             episode_idx = self.model.get_episode_idx()
 
-            for preset in carla_weather_presets:
+            for preset in self.presets:
                 state, terminal_state, total_reward = self.source_env.reset(), False, 0
                 self.source_env.change_weather(preset)
                 state = self.make_state(state, transform_params=transform_params)
@@ -340,12 +357,12 @@ def init_hyper_params():
     # DR hyper parameters
     parser.add_argument("--dr_learning_rate", type=float, default=1e-2, help="DR learning rate")
     parser.add_argument("--dr_num_epochs", type=int, default=1000, help="DR number of epochs")
-    parser.add_argument("--brightness_mean", type=float, default=6.0, help="Initial Distribution Mean (Brightness)")
-    parser.add_argument("--brightness_std", type=float, default=2.0, help="Initial Distribution Std Dev (Brightness)")
-    parser.add_argument("--contrast_mean", type=float, default=6.0, help="Initial Distribution Mean (Contrast)")
-    parser.add_argument("--contrast_std", type=float, default=2.0, help="Initial Distribution Std Dev (Contrast)")
-    parser.add_argument("--hue_mean", type=float, default=6.0, help="Initial Distribution Mean (Hue)")
-    parser.add_argument("--hue_std", type=float, default=2.0, help="Initial Distribution Std Dev (Hue)")
+    parser.add_argument("--brightness_mean", type=float, default=1.5, help="Initial Distribution Mean (Brightness)")
+    parser.add_argument("--brightness_std", type=float, default=0.5, help="Initial Distribution Std Dev (Brightness)")
+    parser.add_argument("--contrast_mean", type=float, default=1.5, help="Initial Distribution Mean (Contrast)")
+    parser.add_argument("--contrast_std", type=float, default=0.5, help="Initial Distribution Std Dev (Contrast)")
+    parser.add_argument("--hue_mean", type=float, default=1.5, help="Initial Distribution Mean (Hue)")
+    parser.add_argument("--hue_std", type=float, default=0.5, help="Initial Distribution Std Dev (Hue)")
     
     
     # PPO hyper parameters
@@ -362,6 +379,7 @@ def init_hyper_params():
                         help="Trained VAE model to load")
     parser.add_argument("--vae_model_type", type=str, default='cnn', help="VAE model type (\"cnn\" or \"mlp\")")
     parser.add_argument("--vae_z_dim", type=int, default=64, help="Size of VAE bottleneck")
+    parser.add_argument("-use_vae", action="store_true", help="If True, use vae, else mobilenet v2")
 
     # General hyper parameters
     parser.add_argument("--discount_factor", type=float, default=0.99, help="GAE discount factor")
@@ -381,6 +399,7 @@ def init_hyper_params():
     
     # Carla Settings
     parser.add_argument("--synchronous", type=int, default=True, help="Set this to True when running in a synchronous environment")
+    parser.add_argument("-weather", action="store_true", help="If True, use all weather presets to train every episode")
 
     # AirSim Settings
     parser.add_argument("--route_file", type=str, default="./AirSimEnv/routes/dr-test-02.txt", help="Route to use in AirSim")
@@ -410,7 +429,8 @@ def init_hyper_params():
             'episodes': params['num_episodes'],
             'batch_size': params['batch_size'],
             'gae_lambda': params['gae_lambda'],
-            'discount_factor': params['discount_factor']   
+            'discount_factor': params['discount_factor'],
+            'use_vae': params['use_vae']   
         },
         'env': {
             'common': {
@@ -418,11 +438,12 @@ def init_hyper_params():
                 'fps': params['fps'],
                 'action_smoothing': params['action_smoothing'],
                 'reward_fn': params['reward_fn'],
-                'obs_res': (160, 80)
+                'obs_res': (160, 80) if params['use_vae'] else (160, 160)
             },
             'source': {
                 'synchronous': params['synchronous'],
-                'start_carla': False
+                'start_carla': False,
+                'weather': params['weather']
             },
             'target': {
                 'route_file': params['route_file']
