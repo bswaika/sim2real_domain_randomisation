@@ -55,3 +55,20 @@
 #         'learning_rate': 1e-2
 #     }
 # }
+
+# presets = [
+#     carla.WeatherParameters.ClearNoon, 
+#     carla.WeatherParameters.CloudyNoon,
+#     carla.WeatherParameters.WetNoon,
+#     carla.WeatherParameters.WetCloudyNoon,
+#     carla.WeatherParameters.MidRainyNoon,
+#     carla.WeatherParameters.HardRainNoon,
+#     carla.WeatherParameters.SoftRainNoon,
+#     carla.WeatherParameters.ClearSunset,
+#     carla.WeatherParameters.CloudySunset,
+#     carla.WeatherParameters.WetSunset,
+#     carla.WeatherParameters.WetCloudySunset,
+#     carla.WeatherParameters.MidRainSunset,
+#     carla.WeatherParameters.HardRainSunset,
+#     carla.WeatherParameters.SoftRainSunset
+# ]

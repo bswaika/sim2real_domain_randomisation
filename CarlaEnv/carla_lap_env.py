@@ -19,6 +19,23 @@ from wrappers import *
 # - Just found out gym provides ObservationWrapper and RewardWrapper classes.
 #   Should replace encode_state_fn and reward_fn with these.
 
+carla_weather_presets = [
+    carla.WeatherParameters.ClearNoon, 
+    carla.WeatherParameters.CloudyNoon,
+    carla.WeatherParameters.WetNoon,
+    carla.WeatherParameters.WetCloudyNoon,
+    carla.WeatherParameters.MidRainyNoon,
+    carla.WeatherParameters.HardRainNoon,
+    carla.WeatherParameters.SoftRainNoon,
+    carla.WeatherParameters.ClearSunset,
+    carla.WeatherParameters.CloudySunset,
+    carla.WeatherParameters.WetSunset,
+    carla.WeatherParameters.WetCloudySunset,
+    carla.WeatherParameters.MidRainSunset,
+    carla.WeatherParameters.HardRainSunset,
+    carla.WeatherParameters.SoftRainSunset
+]
+
 class CarlaLapEnv(gym.Env):
     """
         This is a simple CARLA environment where the goal is to drive in a lap
@@ -256,6 +273,9 @@ class CarlaLapEnv(gym.Env):
         # Return initial observation
         return self.step(None)[0]
 
+    def change_weather(self, preset):
+        self.world.get_carla_world().set_weather(preset)
+
     def close(self):
         if self.carla_process:
             self.carla_process.terminate()
@@ -408,7 +428,7 @@ class CarlaLapEnv(gym.Env):
 
         # Check for ESC press
         pygame.event.pump()
-        if pygame.key.get_pressed()[K_ESCAPE]:
+        if pygame.key.get_pressed()[K_x]:
             self.close()
             self.terminal_state = True
         

@@ -8,6 +8,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 from CarlaEnv.carla_lap_env import CarlaLapEnv as CarlaEnv
+from CarlaEnv.carla_lap_env import carla_weather_presets
 from AirSimEnv.airsim_lap_env import AirSimLapEnv as AirSimEnv
 
 from vae_common import load_vae, make_encode_state_fn
@@ -155,69 +156,71 @@ class DomainRandomizer:
         while episodes <= 0 or self.model.get_episode_idx() < episodes:
             episode_idx = self.model.get_episode_idx()
 
-            state, terminal_state, total_reward = self.source_env.reset(), False, 0
-            state = self.make_state(state, transform_params=transform_params)
+            for preset in carla_weather_presets:
+                state, terminal_state, total_reward = self.source_env.reset(), False, 0
+                self.source_env.change_weather(preset)
+                state = self.make_state(state, transform_params=transform_params)
 
-            print(f"Episode {episode_idx} (Step {self.model.get_train_step_idx()})")
-            while not terminal_state:
-                states, taken_actions, values, rewards, dones = [], [], [], [], []
-                for _ in range(horizon):
-                    action, value = self.model.predict(state, write_to_summary=True)
-                    next_state, reward, terminal_state, info = self.source_env.step(action)
-                    next_state = self.make_state(next_state, transform_params=transform_params)
-                    if info['closed']:
-                        sys.exit(0)
-                    self.source_env.extra_info.extend([
-                        "Episode {}".format(episode_idx),
-                        "Training...",
-                        "",
-                        "Value:  % 20.2f" % value
-                    ])
+                print(f"Episode {episode_idx} (Step {self.model.get_train_step_idx()})")
+                while not terminal_state:
+                    states, taken_actions, values, rewards, dones = [], [], [], [], []
+                    for _ in range(horizon):
+                        action, value = self.model.predict(state, write_to_summary=True)
+                        next_state, reward, terminal_state, info = self.source_env.step(action)
+                        next_state = self.make_state(next_state, transform_params=transform_params)
+                        if info['closed']:
+                            sys.exit(0)
+                        self.source_env.extra_info.extend([
+                            "Episode {}".format(episode_idx),
+                            "Training...",
+                            "",
+                            "Value:  % 20.2f" % value
+                        ])
 
-                    self.source_env.render()
-                    total_reward += reward
+                        self.source_env.render()
+                        total_reward += reward
 
-                    states.append(state)         # [T, *input_shape]
-                    taken_actions.append(action) # [T,  num_actions]
-                    values.append(value)         # [T]
-                    rewards.append(reward)       # [T]
-                    dones.append(terminal_state) # [T]
-                    state = next_state
+                        states.append(state)         # [T, *input_shape]
+                        taken_actions.append(action) # [T,  num_actions]
+                        values.append(value)         # [T]
+                        rewards.append(reward)       # [T]
+                        dones.append(terminal_state) # [T]
+                        state = next_state
 
-                    if terminal_state:
-                        break
-                
-                _, last_values = self.model.predict(state)
+                        if terminal_state:
+                            break
+                    
+                    _, last_values = self.model.predict(state)
 
-                advantages = compute_gae(rewards, values, last_values, dones, discount_factor, gae_lambda)
-                returns = advantages + values
-                advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+                    advantages = compute_gae(rewards, values, last_values, dones, discount_factor, gae_lambda)
+                    returns = advantages + values
+                    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-                states        = np.array(states)
-                taken_actions = np.array(taken_actions)
-                returns       = np.array(returns)
-                advantages    = np.array(advantages)
+                    states        = np.array(states)
+                    taken_actions = np.array(taken_actions)
+                    returns       = np.array(returns)
+                    advantages    = np.array(advantages)
 
-                T = len(rewards)
-                assert states.shape == (T, *self.input_shape)
-                assert taken_actions.shape == (T, self.num_actions)
-                assert returns.shape == (T,)
-                assert advantages.shape == (T,)
+                    T = len(rewards)
+                    assert states.shape == (T, *self.input_shape)
+                    assert taken_actions.shape == (T, self.num_actions)
+                    assert returns.shape == (T,)
+                    assert advantages.shape == (T,)
 
-                self.model.update_old_policy()
-                for _ in range(epochs):
-                    num_samples = len(states)
-                    indices = np.arange(num_samples)
-                    np.random.shuffle(indices)
-                    for i in range(int(np.ceil(num_samples / batch_size))):
-                        begin = i * batch_size
-                        end   = begin + batch_size
-                        if end > num_samples:
-                            end = None
-                        mb_idx = indices[begin:end]
+                    self.model.update_old_policy()
+                    for _ in range(epochs):
+                        num_samples = len(states)
+                        indices = np.arange(num_samples)
+                        np.random.shuffle(indices)
+                        for i in range(int(np.ceil(num_samples / batch_size))):
+                            begin = i * batch_size
+                            end   = begin + batch_size
+                            if end > num_samples:
+                                end = None
+                            mb_idx = indices[begin:end]
 
-                        self.model.train(states[mb_idx], taken_actions[mb_idx],
-                                    returns[mb_idx], advantages[mb_idx])
+                            self.model.train(states[mb_idx], taken_actions[mb_idx],
+                                        returns[mb_idx], advantages[mb_idx])
             
             self.model.write_value_to_summary(f"train/{idx}|{'|'.join(map(str, transform_params))}/reward", total_reward, episode_idx)
             self.model.write_value_to_summary(f"train/{idx}|{'|'.join(map(str, transform_params))}/distance_traveled", self.source_env.distance_traveled, episode_idx)
@@ -231,6 +234,7 @@ class DomainRandomizer:
         env = self.source_env if in_source_env else self.target_env
         if in_source_env:
             state, terminal, total_reward = env.reset(is_training=False), False, 0
+            env.change_weather(carla_weather_presets[0])
             state = self.make_state(state, transform_params=transform_params, save_frame_idx=idx)
         else:
             state, terminal, total_reward = env.reset(), False, 0
