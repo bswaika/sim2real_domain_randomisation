@@ -130,7 +130,14 @@ class DomainRandomizer:
         self.model.init_session()
         self.model.load_latest_checkpoint()
         self.model.write_dict_to_summary('hyperparams/ppo', self.hyper_params['model']['ppo'], 0)
-        self.model.write_dict_to_summary('hyperparams/vae', self.hyper_params['model']['vae'], 0)
+        if self.vae:
+            self.model.write_dict_to_summary('hyperparams/vae', self.hyper_params['model']['vae'], 0)
+        else:
+            self.model.write_dict_to_summary('hyperparams/cnn', {
+                'model_name': 'mobilenet_v2',
+                'model_type': 'cnn',
+                'z_dim': 1280                
+            }, 0)
         self.model.write_dict_to_summary('hyperparams/general', {k:self.hyper_params['model'][k] for k in self.hyper_params['model'] if k != 'ppo' and k != 'vae'}, 0)
 
     def transform_frame(self, frame, transform_params):
@@ -160,7 +167,7 @@ class DomainRandomizer:
         return encoded_state
 
     def train(self, idx, transform_params):
-        self.model.reset_episode_idx()
+        # self.model.reset_episode_idx()
 
         episodes = self.hyper_params['model']['episodes']
         epochs = self.hyper_params['model']['epochs']
@@ -170,8 +177,11 @@ class DomainRandomizer:
         gae_lambda = self.hyper_params['model']['gae_lambda']
         discount_factor = self.hyper_params['model']['discount_factor']
 
-        while episodes <= 0 or self.model.get_episode_idx() < episodes:
-            episode_idx = self.model.get_episode_idx()
+        # while episodes <= 0 or self.model.get_episode_idx() < episodes:
+        #     episode_idx = self.model.get_episode_idx()
+
+        while episodes <= 0 or (self.model.get_episode_idx() % (episodes + 2)) < episodes:
+            episode_idx = (self.model.get_episode_idx() % (episodes + 2))
 
             for preset in self.presets:
                 state, terminal_state, total_reward = self.source_env.reset(), False, 0
@@ -239,12 +249,19 @@ class DomainRandomizer:
                             self.model.train(states[mb_idx], taken_actions[mb_idx],
                                         returns[mb_idx], advantages[mb_idx])
             
-            self.model.write_value_to_summary(f"train/{idx}|{'|'.join(map(str, transform_params))}/reward", total_reward, episode_idx)
-            self.model.write_value_to_summary(f"train/{idx}|{'|'.join(map(str, transform_params))}/distance_traveled", self.source_env.distance_traveled, episode_idx)
-            self.model.write_value_to_summary(f"train/{idx}|{'|'.join(map(str, transform_params))}/average_speed", 3.6 * self.source_env.speed_accum / self.source_env.step_count, episode_idx)
-            self.model.write_value_to_summary(f"train/{idx}|{'|'.join(map(str, transform_params))}/center_lane_deviation", self.source_env.center_lane_deviation, episode_idx)
-            self.model.write_value_to_summary(f"train/{idx}|{'|'.join(map(str, transform_params))}/average_center_lane_deviation", self.source_env.center_lane_deviation / self.source_env.step_count, episode_idx)
-            self.model.write_value_to_summary(f"train/{idx}|{'|'.join(map(str, transform_params))}/distance_over_deviation", self.source_env.distance_traveled / self.source_env.center_lane_deviation, episode_idx)
+            self.model.write_value_to_summary(f"train/reward", total_reward, idx * episodes + episode_idx)
+            self.model.write_value_to_summary(f"train/distance_traveled", self.source_env.distance_traveled, idx * episodes + episode_idx)
+            self.model.write_value_to_summary(f"train/average_speed", 3.6 * self.source_env.speed_accum / self.source_env.step_count, idx * episodes + episode_idx)
+            self.model.write_value_to_summary(f"train/center_lane_deviation", self.source_env.center_lane_deviation, idx * episodes + episode_idx)
+            self.model.write_value_to_summary(f"train/average_center_lane_deviation", self.source_env.center_lane_deviation / self.source_env.step_count, idx * episodes + episode_idx)
+            self.model.write_value_to_summary(f"train/distance_over_deviation", self.source_env.distance_traveled / self.source_env.center_lane_deviation, idx * episodes + episode_idx)
+
+            # self.model.write_value_to_summary(f"train/{idx}|{'|'.join(map(str, transform_params))}/reward", total_reward, episode_idx)
+            # self.model.write_value_to_summary(f"train/{idx}|{'|'.join(map(str, transform_params))}/distance_traveled", self.source_env.distance_traveled, episode_idx)
+            # self.model.write_value_to_summary(f"train/{idx}|{'|'.join(map(str, transform_params))}/average_speed", 3.6 * self.source_env.speed_accum / self.source_env.step_count, episode_idx)
+            # self.model.write_value_to_summary(f"train/{idx}|{'|'.join(map(str, transform_params))}/center_lane_deviation", self.source_env.center_lane_deviation, episode_idx)
+            # self.model.write_value_to_summary(f"train/{idx}|{'|'.join(map(str, transform_params))}/average_center_lane_deviation", self.source_env.center_lane_deviation / self.source_env.step_count, episode_idx)
+            # self.model.write_value_to_summary(f"train/{idx}|{'|'.join(map(str, transform_params))}/distance_over_deviation", self.source_env.distance_traveled / self.source_env.center_lane_deviation, episode_idx)
             self.model.write_episodic_summaries()
     
     def eval(self, idx, in_source_env=True, transform_params=(0.0, 0.0, 0.0)):
@@ -312,9 +329,15 @@ class DomainRandomizer:
         self.model.write_value_to_summary(f"eval/{'source' if in_source_env else 'target'}/center_lane_deviation", env.center_lane_deviation, idx)
         self.model.write_value_to_summary(f"eval/{'source' if in_source_env else 'target'}/average_center_lane_deviation", env.center_lane_deviation / env.step_count, idx)
         self.model.write_value_to_summary(f"eval/{'source' if in_source_env else 'target'}/distance_over_deviation", env.distance_traveled / env.center_lane_deviation, idx)
+
+        self.model.sess.run([self.model.episode_counter.inc_op])
         
         return total_reward
     
+    def close(self):
+        self.source_env.close()
+        self.target_env.close()
+
     def run(self):
         # self.model.sess.run(tf.variables_initializer(self.optimizer.variables()))
         for idx in range(self.epochs):
@@ -350,6 +373,7 @@ class DomainRandomizer:
             outfile.write(f'Hue ~ Normal(mu={self.model.sess.run(self.params.hue.loc)}, sigma={self.model.sess.run(self.params.hue.scale)})\n')
         
         print('Done...')
+        self.close()
 
 def init_hyper_params():
     parser = argparse.ArgumentParser(description="Domain Randomization (sim2sim)")
